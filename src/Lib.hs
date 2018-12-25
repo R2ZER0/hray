@@ -13,6 +13,9 @@ import Foreign.C.Types (CInt)
 width = 200
 height = 100
 
+white = CVec3 1.0 1.0 1.0
+skyBlue = (CVec3 135 206 235) .^ (1.0 / 255.0)
+
 vec x y z = CVec3 x y z
 
 -- Ray origin direction
@@ -35,7 +38,7 @@ viewPixels xs ys = viewPixelsAt xs ys 0 0
 
 viewRays xs ys = fmap (\(x, y) -> (x, y, rayAt xs ys x y)) $ viewPixels xs ys
 
-trace (Ray origin dir) = vec 1.0 0.0 0.0
+trace (Ray origin dir@(CVec3 xd yd zd)) = gradient white skyBlue yd
 
 view xs ys = fmap (\(x, y, ray) -> (x, y, trace ray)) $ viewRays xs ys
 
@@ -44,6 +47,11 @@ someFunc = do
     let picture = view (width :: Int) (height :: Int)
     --putStrLn $ show picture -- Print out the image data structure
     renderPicture picture
+
+
+gradient from to t = (from .^ t') <+> (to .^ (1-t'))
+    where
+        t' = max 0.0 (min 1.0 t)
 
 -- Utility functions
 eventIsPressQ ev = case SDL.eventPayload ev of
