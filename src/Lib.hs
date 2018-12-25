@@ -8,12 +8,15 @@ import Data.Vec3
 import Text.Pretty.Simple (pPrint, pShow)
 import qualified SDL as SDL
 import qualified Control.Exception as Exception
+import Foreign.C.Types (CInt)
 
-type Vec = CVec3
+width = 200
+height = 100
+
 vec x y z = CVec3 x y z
 
 -- Ray origin direction
-data Ray = Ray Vec Vec deriving (Show, Eq)
+data Ray = Ray CVec3 CVec3 deriving (Show, Eq)
 
 lowerLeft = vec (-0.5) (-0.5) 1.0
 xUnit xs = vec (1.0/(fromIntegral xs)) 0 0
@@ -32,15 +35,14 @@ viewPixels xs ys = viewPixelsAt xs ys 0 0
 
 viewRays xs ys = fmap (\(x, y) -> (x, y, rayAt xs ys x y)) $ viewPixels xs ys
 
-
 trace (Ray origin dir) = vec 1.0 0.0 0.0
 
-view xs ys = fmap (\(x, y, ray) -> trace ray) $ viewRays xs ys
+view xs ys = fmap (\(x, y, ray) -> (x, y, trace ray)) $ viewRays xs ys
 
 someFunc :: IO ()
 someFunc = do
-    let picture = view (2 :: Int) (2 :: Int)
-    putStrLn $ show picture
+    let picture = view (width :: Int) (height :: Int)
+    --putStrLn $ show picture -- Print out the image data structure
     renderPicture picture
 
 -- Utility functions
@@ -57,16 +59,27 @@ renderPicture img = do
             renderer <- SDL.createRenderer window (-1) (SDL.RendererConfig { SDL.rendererType = SDL.UnacceleratedRenderer, SDL.rendererTargetTexture = False })
             --rendererInfo <- SDL.getRendererInfo renderer
             --putStrLn $ show rendererInfo
-            appLoop renderer
+            appLoop renderer img
         catchErr window exception = do
             SDL.destroyWindow window
             putStrLn "Caught exception!"
             putStrLn $ show (exception :: Exception.ErrorCall)
     
 
-appLoop renderer = do
+drawPoint renderer (x, y, CVec3 r g b) = do
+    let drawColour = SDL.rendererDrawColor renderer
+    drawColour SDL.$= (SDL.V4
+                        (floor (r*255.0))
+                        (floor (g*255.0))
+                        (floor (b*255.0))
+                        (255))
+    SDL.drawPoint renderer (SDL.P (SDL.V2 (fromIntegral x :: CInt) (fromIntegral y :: CInt)))
+
+appLoop renderer img = do
+    mapM_ (drawPoint renderer) img
+    SDL.present renderer
     events <- SDL.pollEvents
     let qPressed = any eventIsPressQ events
-    unless qPressed (appLoop renderer)
+    unless qPressed (appLoop renderer img)
 
 
