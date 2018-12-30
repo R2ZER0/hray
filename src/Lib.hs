@@ -83,9 +83,9 @@ gradient from to t = (from .^ t') <+> (to .^ (1-t'))
     where
         t' = max 0.0 (min 1.0 t)
 
-intersectSphere :: Sphere -> Ray -> Maybe (Double, CVec3)
+intersectSphere :: Sphere -> Ray -> Maybe CVec3
 intersectSphere (Sphere sphereCentre sphereRadius) (Ray rayOrigin rayDirection) =
-    if discriminant < 0 then Nothing else Just (t, rayOrigin <+> (rayDirection .^ t))
+    if discriminant < 0 then Nothing else Just (rayOrigin <+> (rayDirection .^ t))
     where
         cameraToCentre = rayOrigin <-> sphereCentre
         v = cameraToCentre .* rayOrigin
@@ -93,13 +93,32 @@ intersectSphere (Sphere sphereCentre sphereRadius) (Ray rayOrigin rayDirection) 
         discriminant = (sphereRadius * sphereRadius) - eoDot + (v * v)
         t = v - (sqrt discriminant)
 
+intersectSphere' :: Sphere -> Ray -> Maybe CVec3
+intersectSphere' (Sphere sphereCentre sphereRadius) (Ray rayOrigin rayLine)
+    = if hasIntersection then Just intersectionPoint else Nothing
+    where
+        -- https://en.wikipedia.org/wiki/Line%E2%80%93sphere_intersection
+        -- rayLine must be unit
+        rayLine' = normalize rayLine
+
+        -- calculating the discriminant b2 - 4ac
+        oc = rayOrigin <-> sphereCentre
+        b = (rayLine' .* oc)
+        discriminant = (b * b) - (oc .* oc) + (sphereRadius * sphereRadius)
+        hasIntersection = discriminant > 0
+
+        -- the smaller soluction to the line equation: rayOrigin + d*rayLine
+        d = (-b) - sqrt discriminant
+        intersectionPoint = rayOrigin <+> (rayLine' .^ d)
+
+
 -- The Scene
 sphere1 = Sphere (CVec3 0.0 3.5 (-3.0)) 3.0
 
 -- Trace
 trace :: Ray -> Colour
 trace ray@(Ray origin dir@(CVec3 xd yd zd)) = case intersectSphere sphere1 ray of
-    Just (t, point) -> point .^ 1.0
+    Just point -> point .^ 0.25
     Nothing -> gradient sunsetRed skyBlue yd
 
 
