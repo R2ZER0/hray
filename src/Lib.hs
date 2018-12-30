@@ -14,8 +14,8 @@ import Control.Concurrent (threadDelay)
 width :: Int
 height :: Int
 
-width = 2
-height = 2 --width `div` 2
+width = 400
+height = width `div` 2
 
 -- Colours
 type Colour = CVec3
@@ -75,7 +75,7 @@ view xs ys = fmap (\(x, y, ray) -> (x, y, trace ray)) $ viewRays xs ys
 someFunc :: IO ()
 someFunc = do
     let picture = view (width :: Int) (height :: Int)
-    pPrint picture -- Print out the image data structure
+    --pPrint picture -- Print out the image data structure
     renderPicture picture
 
 
@@ -83,18 +83,9 @@ gradient from to t = (from .^ t') <+> (to .^ (1-t'))
     where
         t' = max 0.0 (min 1.0 t)
 
-intersectSphere :: Sphere -> Ray -> Maybe CVec3
-intersectSphere (Sphere sphereCentre sphereRadius) (Ray rayOrigin rayDirection) =
-    if discriminant < 0 then Nothing else Just (rayOrigin <+> (rayDirection .^ t))
-    where
-        cameraToCentre = rayOrigin <-> sphereCentre
-        v = cameraToCentre .* rayOrigin
-        eoDot = cameraToCentre .* cameraToCentre
-        discriminant = (sphereRadius * sphereRadius) - eoDot + (v * v)
-        t = v - (sqrt discriminant)
 
-intersectSphere' :: Sphere -> Ray -> Maybe CVec3
-intersectSphere' (Sphere sphereCentre sphereRadius) (Ray rayOrigin rayLine)
+intersectSphere :: Sphere -> Ray -> Maybe CVec3
+intersectSphere (Sphere sphereCentre sphereRadius) (Ray rayOrigin rayLine)
     = if hasIntersection then Just intersectionPoint else Nothing
     where
         -- https://en.wikipedia.org/wiki/Line%E2%80%93sphere_intersection
