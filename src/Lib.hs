@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lib
-    ( someFunc
+    ( runAppWithCatch
     ) where
 
 import Control.Monad
@@ -14,7 +14,7 @@ import Control.Concurrent (threadDelay)
 width :: Int
 height :: Int
 
-width = 400
+width = 600
 height = width `div` 2
 
 -- Colours
@@ -32,18 +32,28 @@ data Ray = Ray CVec3 CVec3 deriving (Show, Eq)
 -- Sphere point radius
 data Sphere = Sphere CVec3 Double
 
+-- Camera location fov vector
+data Camera = Camera CVec3 Double CVec3
+
+
+-- Scene objects
+data Scene = Scene Sphere
+
 lowerLeft = vec (-0.5) (-0.5) 1.0
 xUnit xs = vec (1.0/(fromIntegral xs)) 0 0
 yUnit ys = vec 0 (1.0/(fromIntegral ys)) 0
 
-cameraLocation = vec 0.0 1.8 10.0   
-cameraFov = 45.0
-cameraVector = vec 0.0 3.0 0.0
+camera :: Camera
+camera = Camera cameraLocation cameraFov cameraVector
+  where
+    cameraLocation = vec 0.0 1.8 10.0   
+    cameraFov = 45.0
+    cameraVector = vec 0.0 3.0 0.0
 
-rayAt xs ys x y = Ray cameraLocation (normalize (lowerLeft <+> ((xUnit xs) .^ (fromIntegral x)) <+> ((yUnit ys) .^ (fromIntegral y))))
+--rayAt xs ys x y = Ray cameraLocation (normalize (lowerLeft <+> ((xUnit xs) .^ (fromIntegral x)) <+> ((yUnit ys) .^ (fromIntegral y))))
 
-rayAt' :: Int -> Int -> Int -> Int -> Ray
-rayAt' xs ys x y = Ray cameraLocation (normalize (eyeVector <+> yv <+> xv))
+rayAt' :: Camera -> Int -> Int -> Int -> Int -> Ray
+rayAt' (Camera cameraLocation cameraFov cameraVector) xs ys x y = Ray cameraLocation (normalize (eyeVector <+> yv <+> xv))
     where
         eyeVector = normalize (cameraVector <-> cameraLocation)
         vpRight = normalize (eyeVector >< (vec 0.0 1.0 0.0))
@@ -67,17 +77,12 @@ viewPixelsAt xs ys x y
 
 viewPixels :: Int -> Int -> [(Int, Int)]
 viewPixels xs ys = viewPixelsAt xs ys 0 0
-viewRays xs ys = fmap (\(x, y) -> (x, y, rayAt' xs ys x y)) $ viewPixels xs ys
 
-view :: Int -> Int -> [(Int, Int, Colour)]
-view xs ys = fmap (\(x, y, ray) -> (x, y, trace ray)) $ viewRays xs ys
+viewRays :: Camera -> Int -> Int -> [(Int, Int, Ray)]
+viewRays camera xs ys = fmap (\(x, y) -> (x, y, rayAt' camera xs ys x y)) $ viewPixels xs ys
 
-someFunc :: IO ()
-someFunc = do
-    let picture = view (width :: Int) (height :: Int)
-    --pPrint picture -- Print out the image data structure
-    renderPicture picture
-
+render :: Scene -> Camera -> Int -> Int -> [(Int, Int, Colour)]
+render scene camera xs ys = fmap (\(x, y, ray) -> (x, y, trace scene ray)) $ viewRays camera xs ys
 
 gradient from to t = (from .^ t') <+> (to .^ (1-t'))
     where
@@ -107,19 +112,24 @@ intersectSphere (Sphere sphereCentre sphereRadius) (Ray rayOrigin rayLine)
 sphere1 = Sphere (CVec3 0.0 3.5 (-3.0)) 3.0
 
 -- Trace
-trace :: Ray -> Colour
-trace ray@(Ray origin dir@(CVec3 xd yd zd)) = case intersectSphere sphere1 ray of
+trace :: Scene -> Ray -> Colour
+trace (Scene sphere1) ray@(Ray origin dir@(CVec3 xd yd zd)) = case intersectSphere sphere1 ray of
     Just point -> point .^ 0.25
     Nothing -> gradient sunsetRed skyBlue yd
 
+-- Update functions
+
+moveCamera :: Camera -> CVec3 -> Camera
+moveCamera (Camera point fov v) delta = Camera (point <+> delta) fov v
 
 -- Utility functions
-eventIsPressQ ev = case SDL.eventPayload ev of
+eventIsPress key ev = case SDL.eventPayload ev of
     SDL.KeyboardEvent keyboardEvent ->
-        SDL.keyboardEventKeyMotion keyboardEvent == SDL.Pressed && SDL.keysymKeycode (SDL.keyboardEventKeysym keyboardEvent) == SDL.KeycodeQ
+        SDL.keyboardEventKeyMotion keyboardEvent == SDL.Pressed && SDL.keysymKeycode (SDL.keyboardEventKeysym keyboardEvent) == key
     _ -> False
 
-renderPicture img = do
+runAppWithCatch :: IO ()
+runAppWithCatch = do
     window <- SDL.createWindow "App" SDL.defaultWindow
     Exception.catch (runApp window) (catchErr window)
     where
@@ -127,12 +137,12 @@ renderPicture img = do
             renderer <- SDL.createRenderer window (-1) (SDL.RendererConfig { SDL.rendererType = SDL.UnacceleratedRenderer, SDL.rendererTargetTexture = False })
             --rendererInfo <- SDL.getRendererInfo renderer
             --putStrLn $ show rendererInfo
-            appLoop renderer img
+            let scene = Scene sphere1
+            appLoop renderer scene camera
         catchErr window exception = do
             SDL.destroyWindow window
             putStrLn "Caught exception!"
             putStrLn $ show (exception :: Exception.ErrorCall)
-
 
 drawPoint renderer (x, y, CVec3 r g b) = do
     let drawColour = SDL.rendererDrawColor renderer
@@ -143,12 +153,18 @@ drawPoint renderer (x, y, CVec3 r g b) = do
                         (255))
     SDL.drawPoint renderer (SDL.P (SDL.V2 (fromIntegral x :: CInt) (fromIntegral y :: CInt)))
 
-appLoop renderer img = do
+showPicture renderer img = do
     mapM_ (drawPoint renderer) img
     SDL.present renderer
+
+appLoop renderer scene camera = do
+    let picture = render scene camera (width :: Int) (height :: Int)
+    showPicture renderer picture
     events <- SDL.pollEvents
-    let qPressed = any eventIsPressQ events
-    threadDelay (16*1000)
-    unless qPressed (appLoop renderer img)
+    let pressed key = any (eventIsPress key) events
+    threadDelay ((1000*1000) `div` 60)
+    let camera' = if pressed SDL.KeycodeDown then moveCamera camera (vec 0 0.05 0.2) else camera
+    let camera'' = if pressed SDL.KeycodeUp then moveCamera camera' (vec 0 (-0.05) (-0.2)) else camera'
+    unless (pressed SDL.KeycodeQ) (appLoop renderer scene camera'')
 
 

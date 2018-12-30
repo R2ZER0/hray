@@ -1,6 +1,6 @@
 module Main where
 
-import Lib
+import Lib (runAppWithCatch)
 
 main :: IO ()
-main = someFunc
+main = runAppWithCatch
