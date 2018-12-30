@@ -9,11 +9,16 @@ import Text.Pretty.Simple (pPrint, pShow)
 import qualified SDL as SDL
 import qualified Control.Exception as Exception
 import Foreign.C.Types (CInt)
+import Control.Concurrent (threadDelay)
 
-width = 400
-height = width `div` 2
+width :: Int
+height :: Int
+
+width = 2
+height = 2 --width `div` 2
 
 -- Colours
+type Colour = CVec3
 white = CVec3 1.0 1.0 1.0
 red = CVec3 1.0 0.0 0.0
 sunsetRed = (CVec3 255 166 158) .^ (1.0 / 255.0)
@@ -31,23 +36,46 @@ lowerLeft = vec (-0.5) (-0.5) 1.0
 xUnit xs = vec (1.0/(fromIntegral xs)) 0 0
 yUnit ys = vec 0 (1.0/(fromIntegral ys)) 0
 
-cameraLocation = vec 0 0 2
+cameraLocation = vec 0.0 1.8 10.0   
+cameraFov = 45.0
+cameraVector = vec 0.0 3.0 0.0
 
 rayAt xs ys x y = Ray cameraLocation (normalize (lowerLeft <+> ((xUnit xs) .^ (fromIntegral x)) <+> ((yUnit ys) .^ (fromIntegral y))))
 
+rayAt' :: Int -> Int -> Int -> Int -> Ray
+rayAt' xs ys x y = Ray cameraLocation (normalize (eyeVector <+> yv <+> xv))
+    where
+        eyeVector = normalize (cameraVector <-> cameraLocation)
+        vpRight = normalize (eyeVector >< (vec 0.0 1.0 0.0))
+        vpUp = normalize (vpRight >< eyeVector)
+        fovRadians = pi * (cameraFov / 2.0) / 180.0
+        heightWidthRatio = (fromIntegral ys :: Double) / (fromIntegral xs :: Double)
+        halfWidth = tan fovRadians :: Double
+        halfHeight = heightWidthRatio * halfWidth :: Double
+        cameraWidth = halfWidth * 2
+        cameraHeight = halfHeight * 2
+        pixelWidth = cameraWidth / ((fromIntegral xs :: Double) - 1)
+        pixelHeight = cameraHeight / ((fromIntegral ys :: Double) - 1)
+        xv = vpRight .^ (((fromIntegral x :: Double) * pixelWidth) - halfWidth)
+        yv = vpUp .^ (((fromIntegral y :: Double) * pixelHeight) - halfHeight)
+
+viewPixelsAt :: Int -> Int -> Int -> Int -> [(Int, Int)]
 viewPixelsAt xs ys x y
-    | x >= xs && y >= ys = []
+    | y >= ys = []
     | x >= xs && y < ys = viewPixelsAt xs ys 0 (y+1)
     | otherwise = (x, y) : viewPixelsAt xs ys (x+1) y
 
+viewPixels :: Int -> Int -> [(Int, Int)]
 viewPixels xs ys = viewPixelsAt xs ys 0 0
-viewRays xs ys = fmap (\(x, y) -> (x, y, rayAt xs ys x y)) $ viewPixels xs ys
+viewRays xs ys = fmap (\(x, y) -> (x, y, rayAt' xs ys x y)) $ viewPixels xs ys
+
+view :: Int -> Int -> [(Int, Int, Colour)]
 view xs ys = fmap (\(x, y, ray) -> (x, y, trace ray)) $ viewRays xs ys
 
 someFunc :: IO ()
 someFunc = do
     let picture = view (width :: Int) (height :: Int)
-    --putStrLn $ show picture -- Print out the image data structure
+    pPrint picture -- Print out the image data structure
     renderPicture picture
 
 
@@ -66,11 +94,12 @@ intersectSphere (Sphere sphereCentre sphereRadius) (Ray rayOrigin rayDirection) 
         t = v - (sqrt discriminant)
 
 -- The Scene
-sphere1 = Sphere (CVec3 0.0 0.0 (-2.5)) 0.05
+sphere1 = Sphere (CVec3 0.0 3.5 (-3.0)) 3.0
 
 -- Trace
+trace :: Ray -> Colour
 trace ray@(Ray origin dir@(CVec3 xd yd zd)) = case intersectSphere sphere1 ray of
-    Just (t, point) -> red
+    Just (t, point) -> point .^ 1.0
     Nothing -> gradient sunsetRed skyBlue yd
 
 
@@ -109,6 +138,7 @@ appLoop renderer img = do
     SDL.present renderer
     events <- SDL.pollEvents
     let qPressed = any eventIsPressQ events
+    threadDelay (16*1000)
     unless qPressed (appLoop renderer img)
 
 
