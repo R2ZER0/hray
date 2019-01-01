@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns #-}
 module Lib
     ( runAppWithCatch
     ) where
@@ -153,7 +154,7 @@ drawPoint renderer (x, y, CVec3 r g b) = do
                         (255))
     SDL.drawPoint renderer (SDL.P (SDL.V2 (fromIntegral x :: CInt) (fromIntegral y :: CInt)))
 
-showPicture renderer img = do
+showPicture renderer !img = do
     mapM_ (drawPoint renderer) img
     SDL.present renderer
 
@@ -162,9 +163,12 @@ appLoop renderer scene camera = do
     showPicture renderer picture
     events <- SDL.pollEvents
     let pressed key = any (eventIsPress key) events
-    threadDelay ((1000*1000) `div` 60)
-    let camera' = if pressed SDL.KeycodeDown then moveCamera camera (vec 0 0.05 0.2) else camera
-    let camera'' = if pressed SDL.KeycodeUp then moveCamera camera' (vec 0 (-0.05) (-0.2)) else camera'
-    unless (pressed SDL.KeycodeQ) (appLoop renderer scene camera'')
+    --threadDelay ((1000*1000) `div` 60)
+    let camera' = if pressed SDL.KeycodeDown then moveCamera camera (vec 0 0.05 0.2) 
+                  else if pressed SDL.KeycodeUp then moveCamera camera (vec 0 (-0.05) (-0.2))
+                  else if pressed SDL.KeycodeLeft then moveCamera camera (vec (-0.2) 0 0)
+                  else if pressed SDL.KeycodeRight then moveCamera camera (vec 0.2 0 0)
+                  else camera 
+    unless (pressed SDL.KeycodeQ) (appLoop renderer scene camera')
 
 
